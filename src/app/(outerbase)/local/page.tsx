@@ -1,5 +1,6 @@
 "use client";
 
+import { ConnectionTemplateDictionary } from "@/components/connection-config-editor/template";
 import { MySQLIcon, SQLiteIcon } from "@/components/icons/outerbase-icon";
 import {
   DropdownMenu,
@@ -8,17 +9,24 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { CaretDown } from "@phosphor-icons/react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useCallback, useMemo } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import NavigationLayout from "../nav-layout";
 import { ResourceItemList, ResourceItemProps } from "../resource-item-helper";
 import { deleteLocalBaseDialog } from "./dialog-base-delete";
 import { createLocalBoardDialog } from "./dialog-board-create";
 import { deleteLocalBoardDialog } from "./dialog-board-delete";
-import { useLocalConnectionList, useLocalDashboardList } from "./hooks";
+import {
+  createLocalConnection,
+  getLocalConnectionList,
+  useLocalConnectionList,
+  useLocalDashboardList,
+} from "./hooks";
 
 export default function LocalConnectionPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const [processing, setProcessing] = useState(false);
 
   const {
     data: localBases,
@@ -82,6 +90,60 @@ export default function LocalConnectionPage() {
       .then()
       .catch();
   }, []);
+
+  useEffect(() => {
+    const dbName = searchParams.get("dbName");
+    const host = searchParams.get("host") ?? searchParams.get("url") ?? "";
+    const token =
+      searchParams.get("token") ?? searchParams.get("access-key") ?? "";
+    const driver = searchParams.get("driver") ?? "turso";
+    if (!dbName) return;
+    setProcessing(true);
+    (async () => {
+      const allConnections = await getLocalConnectionList();
+      const match = allConnections.find(
+        (conn) => conn.content?.name?.toLowerCase() === dbName.toLowerCase()
+      );
+      if (match) {
+        const url =
+          match.content.driver === "sqlite-filehandler"
+            ? `/playground/client?s=${match.id}`
+            : `/client/s/${match.content.driver ?? "turso"}?p=${match.id}`;
+        router.replace(url);
+        return;
+      }
+      // Create new connection
+      const template = ConnectionTemplateDictionary[driver];
+      if (!template?.localTo) {
+        setProcessing(false);
+        return;
+      }
+      const config = template.localTo({
+        name: dbName,
+        host,
+        token,
+        ...(driver === "starbase"
+          ? { starbase_type: searchParams.get("type") ?? "internal" }
+          : {}),
+      });
+      const newConn = await createLocalConnection(config);
+      const url =
+        newConn.content.driver === "sqlite-filehandler"
+          ? `/playground/client?s=${newConn.id}`
+          : `/client/s/${newConn.content.driver ?? "turso"}?p=${newConn.id}`;
+      router.replace(url);
+    })();
+  }, [router, searchParams]);
+
+  if (processing) {
+    return (
+      <NavigationLayout>
+        <div className="flex flex-1 items-center justify-center p-8 text-lg">
+          Processing database connection...
+        </div>
+      </NavigationLayout>
+    );
+  }
 
   return (
     <NavigationLayout>

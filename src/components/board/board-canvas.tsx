@@ -38,7 +38,7 @@ interface BoardProps {
   onChange: (v: ReactGridLayout.Layout[]) => void;
 }
 
-const ReactGridLayout = WidthProvider(RGL);
+const ReactGridLayout = WidthProvider(RGL) as unknown as React.FC<any>;
 
 export function BoardCanvas({ value, onChange }: BoardProps) {
   const {
